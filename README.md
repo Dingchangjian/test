@@ -20,7 +20,7 @@ pip install -r requirements.txt
 Data setup
 We use the features provided by G-TAD. To reproduce the results in THUMOS14 without further changes:
 
-Download the data from GooogleDrive or OneDrive.
+Download the data from GooogleDrive[https://drive.google.com/drive/folders/1-19PgCRTTNfy2RWGErvUUlT0_3J-qEb8]
 
 Place it into a folder named TSN_pretrain_avepool_allfrms_hdf5 inside data/thumos_feature.
 
@@ -31,8 +31,9 @@ sh ./run/bcn_train.sh
 Testing
 sh ./run/bcn_infer.sh
 THUMOS Results
+(1) 特征残差
 Method	Feature	mAP@0.3	mAP@0.4	mAP@0.5	mAP@0.6	mAP@0.7	checkpoint
-BCNet	TSN	67.4	61.0	52.5	42.4	29.9	[GooogleDrive]
+BCNet	TSN	67.4	61.0	52.5	42.4	29.9	[链接: https://pan.baidu.com/s/1ACmcPTNuTlUrOFaSLSc2Nw?pwd=1234 提取码: 1234 ]
 Acknowledgement
 We especially thank the contributors of BMN and G-TAD for providing helpful code.
 
