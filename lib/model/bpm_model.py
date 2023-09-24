@@ -127,15 +127,11 @@ class Encoder(nn.Module):
             diff = torch.abs(current_feature - neighbor_features)
             max_diff = torch.max(diff, dim=2, keepdim=True).values
             residuals[:, :, i] = max_diff.squeeze(2)
-        residuals = torch.nn.functional.normalize(residuals,p=2,dim=1)
+        residuals = torch.nn.functional.normalize(residuals,cuda(),p=2,dim=1)
         attention_w = torch.nn.functional.sigmoid(torch.mean(residuals.cuda(),dim=2,keepdim=True))
         residuals = residuals.cuda()*attention_w
         
-
-        
-        output = self.cross_attention(enc_inputs.permute(2,0,1),residuals.cuda().permute(2,0,1)).permute(1,2,0)
-
-        enc_inputs = torch.cat((enc_inputs,output),dim = 1)
+        enc_inputs = torch.cat((enc_inputs,residuals),dim = 1)
         enc_inputs = enc_inputs[:,:256,:] 
         enc_outputs = enc_inputs
         enc_self_attns = []
