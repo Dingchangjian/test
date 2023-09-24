@@ -2,9 +2,6 @@ import math
 import torch
 import numpy as np
 import torch.nn as nn
-import os
-os.environ['CUDA_VISIBLE_DEVICES'] = '0,1' #指定GPU编号
-device = torch.device("cuda") #创建GPU对象
 
 
 class PositionalEncoding(nn.Module):
@@ -45,9 +42,9 @@ class ScaledDotProductAttention(nn.Module):
         context = torch.matmul(attn,V)  # [batch_size, n_heads, len_q, d_v]
         return context, attn
 
-class MultiHeadAttention(nn.Module):
+class MultiHeadAttention0(nn.Module):
     def __init__(self):
-        super(MultiHeadAttention, self).__init__()
+        super(MultiHeadAttention0, self).__init__()
         self.W_Q = nn.Linear(d_model, d_k * n_heads, bias=False)
         self.W_K = nn.Linear(d_model, d_k * n_heads, bias=False)
         self.W_V = nn.Linear(d_model, d_v * n_heads, bias=False)
@@ -90,7 +87,7 @@ class PoswiseFeedForwardNet(nn.Module):
 class EncoderLayer(nn.Module):
     def __init__(self):
         super(EncoderLayer, self).__init__()
-        self.enc_self_attn = MultiHeadAttention()
+        self.enc_self_attn = MultiHeadAttention0()
         self.pos_ffn = PoswiseFeedForwardNet()
         self.out_feat_dim = d_model
 
@@ -106,50 +103,41 @@ class EncoderLayer(nn.Module):
         return enc_outputs, attn
 
 
+
 class Encoder(nn.Module):
     def __init__(self):
         super(Encoder, self).__init__()
         # self.src_emb = nn.Embedding(src_vocab_size, d_model)
         self.pos_emb = PositionalEncoding(d_model)
         self.layers = nn.ModuleList([EncoderLayer() for _ in range(n_layers)])
-        self.bpm_base1 = nn.Sequential(
-            nn.Conv1d(800, 800, kernel_size=3, padding=1, groups=4),
-            nn.ReLU(inplace=True),
-            nn.Conv1d(800, 800, kernel_size=3, padding=1, groups=4),
-            nn.ReLU(inplace=True),
-            nn.Conv1d(800, 400, kernel_size=3, padding=1, groups=4),
-            nn.ReLU(inplace=True)
-        )
-    def LTFM(self, feature_inuts):
-        mid_inputs = feature_inuts.clone()
-        BN = nn.BatchNorm1d(256)
-        # os.environ['CUDA_VISIBLE_DEVICES'] = '0,1' #指定GPU编号
-        # device = torch.device("cuda") #创建GPU对象
-        for i in range(mid_inputs.shape[0]):
-            for j in range(mid_inputs.shape[1]):
-                if j>=2 and j< mid_inputs.shape[1]-2:
-                    mid_inputs[i,j,:] = abs(feature_inuts[i,j+2,:] - feature_inuts[i,j-2,:])
-        mid_inputs = BN(mid_inputs.cpu()).to(device)
-        return mid_inputs
-
     def forward(self, enc_inputs):
         '''
         enc_inputs: [batch_size, src_len]
         '''
+        
         enc_inputs = self.pos_emb(enc_inputs.transpose(0, 1)).transpose(0, 1) # [batch_size, src_len, d_model]
-        mid_inputs = self.LTFM(enc_inputs)
-        # print(enc_inputs[:,4,:])
-        # # print(mid_inputs[:,4,:])
-        # sdsdsd
-        # for i in range(enc_inputs.shape[0]):
-        #     for j in range(enc_inputs.shape[1]):
-        #         if j>=3 and j< enc_inputs.shape[1]-3:
-        #             mid_inputs[i,j,:] = abs(enc_inputs[i,j+3,:] - enc_inputs[i,j-3,:])
-        # print(mid_inputs[0,0,0])
-        # print(enc_inputs[0,0,0])
-        # sdsds
-        fin_inputs = self.bpm_base1(torch.cat((enc_inputs,mid_inputs),2).permute(0,2,1)).permute(0,2,1)
-        enc_outputs = fin_inputs#enc_inputs
+        stride = 5
+        batch_size, num_channels, seq_length = enc_inputs.shape
+        residuals = torch.zeros(batch_size, num_channels, seq_length)
+        for i in range(seq_length):
+            start_idx = max(0, i - stride)
+            end_idx = min(seq_length, i + stride + 1)
+            neighbor_features =  enc_inputs[:, :, start_idx:end_idx]
+            current_feature =  enc_inputs[:, :, i].unsqueeze(2)
+            diff = torch.abs(current_feature - neighbor_features)
+            max_diff = torch.max(diff, dim=2, keepdim=True).values
+            residuals[:, :, i] = max_diff.squeeze(2)
+        residuals = torch.nn.functional.normalize(residuals,p=2,dim=1)
+        attention_w = torch.nn.functional.sigmoid(torch.mean(residuals.cuda(),dim=2,keepdim=True))
+        residuals = residuals.cuda()*attention_w
+        
+
+        
+        output = self.cross_attention(enc_inputs.permute(2,0,1),residuals.cuda().permute(2,0,1)).permute(1,2,0)
+
+        enc_inputs = torch.cat((enc_inputs,output),dim = 1)
+        enc_inputs = enc_inputs[:,:256,:] 
+        enc_outputs = enc_inputs
         enc_self_attns = []
         for layer in self.layers:
             enc_outputs, enc_self_attn = layer(enc_inputs, enc_outputs)
